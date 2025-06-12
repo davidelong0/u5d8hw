@@ -1,15 +1,17 @@
 package epicode.u5d8hw.services;
 
+import epicode.u5d8hw.dto.BlogPostDTO;
+import epicode.u5d8hw.dto.NewBlogPostDTO;
 import epicode.u5d8hw.entities.Author;
 import epicode.u5d8hw.entities.Blogpost;
 import epicode.u5d8hw.exceptions.NotFoundException;
-import epicode.u5d8hw.payloads.NewBlogPostPayload;
-import epicode.u5d8hw.repositories.AuthorsRepository;
 import epicode.u5d8hw.repositories.BlogsRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.util.*;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class BlogsService {
@@ -17,21 +19,33 @@ public class BlogsService {
     private BlogsRepository blogsRepository;
     @Autowired
     private AuthorsService authorsService;
+    @Autowired
+    private UploadService uploadService;
 
-    public Blogpost save(NewBlogPostPayload body) {
+    public BlogPostDTO save(NewBlogPostDTO body, MultipartFile coverFile) throws Exception {
         Author author = authorsService.findById(body.getAuthorId());
-        Blogpost newBlogPost = new Blogpost();
-        newBlogPost.setReadingTime(body.getReadingTime());
-        newBlogPost.setContent(body.getContent());
-        newBlogPost.setTitle(body.getTitle());
-        newBlogPost.setAuthor(author);
-        newBlogPost.setCategory(body.getCategory());
-        newBlogPost.setCover("http://picsum.photos/200/300");
-        return blogsRepository.save(newBlogPost);
+        Blogpost post = new Blogpost();
+        post.setAuthor(author);
+        post.setCategory(body.getCategory());
+        post.setTitle(body.getTitle());
+        post.setContent(body.getContent());
+        post.setReadingTime(body.getReadingTime());
+
+        if (coverFile != null && !coverFile.isEmpty()) {
+            post.setCover(uploadService.upload(coverFile));
+        } else {
+            post.setCover("https://picsum.photos/200/300");
+        }
+
+        return convertToDTO(blogsRepository.save(post));
     }
 
-    public List<Blogpost> getBlogs() {
-        return blogsRepository.findAll();
+    public List<BlogPostDTO> getBlogs() {
+        return blogsRepository.findAll().stream().map(this::convertToDTO).collect(Collectors.toList());
+    }
+
+    public BlogPostDTO findByIdDTO(int id) {
+        return convertToDTO(findById(id));
     }
 
     public Blogpost findById(int id) {
@@ -39,28 +53,41 @@ public class BlogsService {
     }
 
     public void findByIdAndDelete(int id) {
-        Blogpost found = this.findById(id);
-        blogsRepository.delete(found);
+        blogsRepository.delete(findById(id));
     }
 
-    public Blogpost findByIdAndUpdate(int id, NewBlogPostPayload body) {
-        Blogpost found = this.findById(id);
-
-        found.setReadingTime(body.getReadingTime());
-        found.setContent(body.getContent());
-        found.setTitle(body.getTitle());
+    public BlogPostDTO findByIdAndUpdate(int id, NewBlogPostDTO body, MultipartFile coverFile) throws Exception {
+        Blogpost found = findById(id);
         found.setCategory(body.getCategory());
+        found.setTitle(body.getTitle());
+        found.setContent(body.getContent());
+        found.setReadingTime(body.getReadingTime());
 
-        if(found.getAuthor().getId()!= body.getAuthorId()) {
-            Author newAuthor = authorsService.findById(body.getAuthorId());
-            found.setAuthor(newAuthor);
+        if (found.getAuthor().getId() != body.getAuthorId()) {
+            found.setAuthor(authorsService.findById(body.getAuthorId()));
         }
 
-        return blogsRepository.save(found);
+        if (coverFile != null && !coverFile.isEmpty()) {
+            found.setCover(uploadService.upload(coverFile));
+        }
+
+        return convertToDTO(blogsRepository.save(found));
     }
 
-    public List<Blogpost> findByAuthor(int authorId){
+    public List<BlogPostDTO> findByAuthor(int authorId) {
         Author author = authorsService.findById(authorId);
-        return blogsRepository.findByAuthor(author);
+        return blogsRepository.findByAuthor(author).stream().map(this::convertToDTO).collect(Collectors.toList());
+    }
+
+    private BlogPostDTO convertToDTO(Blogpost post) {
+        BlogPostDTO dto = new BlogPostDTO();
+        dto.setId(post.getId());
+        dto.setTitle(post.getTitle());
+        dto.setContent(post.getContent());
+        dto.setCategory(post.getCategory());
+        dto.setReadingTime(post.getReadingTime());
+        dto.setCover(post.getCover());
+        dto.setAuthorId(post.getAuthor().getId());
+        return dto;
     }
 }
